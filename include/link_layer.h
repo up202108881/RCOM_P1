@@ -4,6 +4,26 @@
 #ifndef _LINK_LAYER_H_
 #define _LINK_LAYER_H_
 
+#define FLAG 0x7E
+#define A_TRANSMITTER 0x03
+#define A_RECEIVER 0x01
+#define C_SET 0x03
+#define C_UA 0x07
+#define C_DISC 0x0B
+#define C_RR0 0x05
+#define C_RR1 0x85
+#define C_REJ0 0x01
+#define C_REJ1 0x81
+
+typedef enum {
+    Start,
+    Flag_RCV,
+    A_RCV,
+    C_RCV,
+    BCC_OK,
+    Stop
+} State;
+
 typedef enum
 {
     LlTx,

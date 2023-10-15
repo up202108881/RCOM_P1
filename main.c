@@ -7,7 +7,6 @@
 #include "application_layer.h"
 
 #define BAUDRATE 9600
-#define N_TRIES 3
 #define TIMEOUT 4
 
 // Arguments:
@@ -25,6 +24,8 @@ int main(int argc, char *argv[])
     const char *serialPort = argv[1];
     const char *role = argv[2];
     const char *filename = argv[3];
+    int N_TRIES = 3;
+    
 
     printf("Starting link-layer protocol application\n"
            "  - Serial port: %s\n"

@@ -10,12 +10,6 @@
 #include <termios.h>
 #include <unistd.h>
 
-// Frame Header Size
-#define FH_SIZE 4
-
-// Frame Trailer Size
-#define FT_SIZE 2
-
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
@@ -68,9 +62,10 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(int fd, const unsigned char *buf, int bufSize)
 {   
-    unsigned char *frame = malloc(bufSize + FH_SIZE + FT_SIZE);
+    int frameSize = bufSize + FH_SIZE + FT_SIZE;
+    unsigned char *frame = (unsigned char *)malloc(frameSize * sizeof(unsigned char));
 
-    for (int i = 0; i < bufSize + FH_SIZE + FT_SIZE; i++) {
+    for (int i = 0; i < frameSize; i++) {
         frame[i] = 0;
     }
     frame[0] = FLAG;
@@ -78,7 +73,7 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
     frame[2] = C;
     frame[3] = frame[1] ^ frame[2];
     frame[4] = buf[0];
-    frame[bufSize + FH_SIZE + FT_SIZE - 1] = FLAG;
+    frame[frameSize - 1] = FLAG;
 
     unsigned char bcc2 = buf[0];
     for (int i = 1; i < bufSize; i++) {
@@ -91,9 +86,9 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
     int response_received = FALSE;
     
     while (response_received == FALSE) {
-        int bytes = write(fd, frame, bufSize + FH_SIZE + FT_SIZE);
+        int bytes = write(fd, frame, frameSize);
 
-        if (bytes != bufSize + FH_SIZE + FT_SIZE) {
+        if (bytes != frameSize) {
             perror("write");
             return -1;
         }

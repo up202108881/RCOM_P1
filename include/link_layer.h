@@ -23,6 +23,15 @@ typedef struct
 // Maximum number of bytes that application layer should send to link layer
 #define MAX_PAYLOAD_SIZE 1000
 
+// Frame Header Size
+#define FH_SIZE 4
+
+// Frame Trailer Size
+#define FT_SIZE 2
+
+#define TX_FRAME 0
+#define RX_FRAME 1
+
 // MISC
 #define FALSE 0
 #define TRUE 1

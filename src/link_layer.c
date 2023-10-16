@@ -10,7 +10,6 @@
 #include <termios.h>
 #include <unistd.h>
 
-
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
@@ -100,7 +99,7 @@ int llopen(LinkLayer connectionParameters)
                 switch(bufR[i]){
                     case FLAG:
                         if(currState == BCC_OK){
-                            return 0;
+                            return 1;
                         } else {
                             currState = Flag_RCV;
                         }
@@ -159,24 +158,61 @@ int llopen(LinkLayer connectionParameters)
             return -1;
         }
         printf("Sent UA\n");
-        return 0;
+        return 1;
 
     } else {
         printf("Invalid role\n");
         return -1;
     }     
 
-    return 1;
+    return -1;
 }
 
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
 int llwrite(int fd, const unsigned char *buf, int bufSize)
-{
-    // TODO
+{   
+    int frameSize = bufSize + FH_SIZE + FT_SIZE;
+    unsigned char *frame = (unsigned char *)malloc(frameSize * sizeof(unsigned char));
 
-    return 0;
+    for (int i = 0; i < frameSize; i++) {
+        frame[i] = 0;
+    }
+    frame[0] = FLAG;
+    frame[1] = A;
+    frame[2] = C;
+    frame[3] = frame[1] ^ frame[2];
+    frame[4] = buf[0];
+    frame[frameSize - 1] = FLAG;
+
+    unsigned char bcc2 = buf[0];
+    for (int i = 1; i < bufSize; i++) {
+        frame[FH_SIZE + i] = buf[i];
+        bcc2 ^= buf[i];
+    }
+
+    frame[4 + bufSize] = bcc2;
+
+    int response_received = FALSE;
+    
+    while (response_received == FALSE) {
+        int bytes = write(fd, frame, frameSize);
+
+        if (bytes != frameSize) {
+            perror("write");
+            return -1;
+        }
+
+        unsigned char response[5] = {0};
+
+        int bytes_read = read(fd, response, 5);
+
+        if (bytes_read == 5) {
+            response_received = TRUE;
+            
+        }
+    }
 }
 
 ////////////////////////////////////////////////

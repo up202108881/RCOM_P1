@@ -57,7 +57,7 @@ typedef struct
 #define TRUE 1
 
 // Open a connection using the "port" parameters defined in struct linkLayer.
-// Return "1" on success or "-1" on error.
+// Returns the file descriptor on success or "-1" on error.
 int llopen(LinkLayer connectionParameters);
 
 // Send data in buf with size bufSize.

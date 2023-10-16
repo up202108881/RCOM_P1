@@ -13,7 +13,7 @@
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
-int alarmEnabled = False;
+int alarmEnabled = FALSE;
 int alarmCounter=0;
 void alarmHandler()
 {
@@ -51,7 +51,7 @@ int llopen(LinkLayer connectionParameters)
 
     /* set input mode (non-canonical, no echo,...) */
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = connectionParameters.timeout; /* inter-character timer unused */
+    newtio.c_cc[VTIME] = 0; /* inter-character timer unused */
     newtio.c_cc[VMIN] = 0;                            
 
     tcflush(fd, TCIOFLUSH);
@@ -64,22 +64,25 @@ int llopen(LinkLayer connectionParameters)
 
     printf("New termios structure set\n");
 
+    State currState = Start;
+    char currA = 0;
+    char currC = 0;
+
+    unsigned char bufW[5] = {0};
+    unsigned char byte = 0;
+
     if(connectionParameters.role == LlTx){
-        unsigned char bufW[5] = {0};
-        unsigned char bufR[5] = {0};
 
         bufW[0] = FLAG;
         bufW[1] = A_TRANSMITTER;
         bufW[2] = C_SET;
-        bufW[3] = buf[1] ^ buf[2];
+        bufW[3] = bufW[1] ^ bufW[2];
         bufW[4] = FLAG;
 
-        State currState = Start;
-        char currA = 0;
-        char currC = 0;
+        
 
         while(connectionParameters.nRetransmissions > alarmCounter){
-            if(alarmEnabled == False){
+            if(alarmEnabled == FALSE){
                 int resW = write(fd, bufW, 5);
             
                 if(resW < 0){
@@ -88,23 +91,20 @@ int llopen(LinkLayer connectionParameters)
                 }
                 printf("Sent SET\n");
                 alarm(connectionParameters.timeout);
-                alarmEnabled = True;
+                alarmEnabled = TRUE;
             }
-            int resR = read(fd, bufR, 5);
-            if(resR < 0){
-                perror("read");
-                return -1;
-            }
-            for(int i = 0; i < 5; i++){
-                switch(bufR[i]){
+            if(read(fd, &byte, 1) > 0){
+                switch(byte){
                     case FLAG:
                         if(currState == BCC_OK){
-                            return 1;
+                            printf("Received UA\n");
+                            currState = Stop;
+                            return fd;
                         } else {
                             currState = Flag_RCV;
                         }
                         break;
-                    case A_TRANSMITTER:
+                    case A_RECEIVER:
                         if(currState == Flag_RCV){
                             currState = A_RCV;
                             currA = bufR[i];
@@ -137,15 +137,51 @@ int llopen(LinkLayer connectionParameters)
         }
         return -1;
 
-    } else if(connectionParameters.role == LlRx){
-        newtio.c_cc[VMIN] = 1;
+    } else if(connectionParameters.role == LlRx){ // FAZ SENTIDO TER TIMEOUT AQUI?!
         unsigned char bufW[5] = {0};
-        unsigned char bufR[5] = {0};
-        int res = read(fd, bufR, 5);
-        if(res < 0){
-            perror("read");
-            return -1;
+        unsigned char byte = 0;
+        while( currState != Stop){
+            if(read(fd, &byte, 1) > 0){
+                switch(byte){
+                    case FLAG:
+                        if(currState == BCC_OK){
+                            printf("Received SET\n");
+                            currState = Stop;
+                        } else {
+                            currState = Flag_RCV;
+                        }
+                        break;
+                    case A_TRANSMITTER:
+                        if(currState == Flag_RCV){
+                            currState = A_RCV;
+                            currA = bufR[i];
+                        } else {
+                            currState = Start;
+                        }
+                        break;
+                    case C_SET:
+                        if(currState == A_RCV){
+                            currState = C_RCV;
+                            currC = bufR[i];
+                        } else {
+                            currState = Start;
+                        }
+                        break;
+                    case (currA ^ currC):
+                        if(currState == C_RCV){
+                            currState = BCC_OK;
+                        } else {
+                            currState = Start;
+                        }
+                        break;
+                    default:
+                        currState = Start;
+                        break;
+                }
+            }
+            
         }
+
         bufW[0]=FLAG;
         bufW[1]=A_RECEIVER;
         bufW[2]=C_UA;
@@ -153,12 +189,12 @@ int llopen(LinkLayer connectionParameters)
         bufW[4]=FLAG;
 
         int resW = write(fd, bufW, 5);
-        if(resW < 0){
+        if(resW != 5){
             perror("write");
             return -1;
         }
         printf("Sent UA\n");
-        return 1;
+        return fd;
 
     } else {
         printf("Invalid role\n");

@@ -413,7 +413,7 @@ unsigned char* byteStuffing(unsigned char* buf, int bufSize, int* stuffedBufSize
     return res;
 }
 
-unsigned char* byteDestuffing(const unsigned char* stuffedBuf, int stuffedBufSize, int* destuffedBufSize) {
+unsigned char* byteDestuffing(unsigned char* stuffedBuf, int stuffedBufSize, int* destuffedBufSize) {
     unsigned char* destuffedBuf = (unsigned char*)malloc(stuffedBufSize * sizeof(unsigned char));
 
     if (destuffedBuf == NULL) {

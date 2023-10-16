@@ -81,6 +81,6 @@ unsigned char* byteStuffing(unsigned char* buf, int bufSize, int* stuffedBufSize
 
 // Handles byte destuffing on the data
 // Returns the destuffed data and the size of the destuffed data
-unsigned char* byteDestuffing(const unsigned char* stuffedBuf, int stuffedBufSize, int* destuffedBufSize);
+unsigned char* byteDestuffing(unsigned char* stuffedBuf, int stuffedBufSize, int* destuffedBufSize);
 
 #endif // _LINK_LAYER_H_

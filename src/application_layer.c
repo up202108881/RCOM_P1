@@ -12,15 +12,18 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     linkLayer.nRetransmissions = nTries;
     linkLayer.timeout = timeout;
     if(!strcmp(role,"tx")){
-        linkLayer.role = LlTx;
+        linkLayer.role = LLTX;
     }
     else if(!strcmp(role,"rx")){
-        linkLayer.role = LlRx;
+        linkLayer.role = LLRX;
     }
     else{
         printf("Invalid role\n");
         exit(1);
     }
-    if(llopen(linkLayer) == -1)printf("Ardeu!");
-    else printf("NOT ARDEU!");
+    int fd = llopen(linkLayer);
+    if(fd == -1)printf("Ardeu! OPEN\n");
+    else printf("NOT ARDEU! OPEN\n");
+    if(llclose(fd, linkLayer, FALSE)==-1)printf("Ardeu! CLOSE\n");
+    else printf("NOT ARDEU! CLOSE\n");
 }

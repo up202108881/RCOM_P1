@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+#include <signal.h>
+#include <time.h>
 
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
@@ -64,12 +66,12 @@ int llopen(LinkLayer connectionParameters)
 
     printf("New termios structure set\n");
 
-    State currState = Start;
+    State currState = START;
 
     unsigned char bufW[5] = {0};
     unsigned char byte = 0;
 
-    if(connectionParameters.role == LlTx){
+    if(connectionParameters.role == LLTX){
 
         bufW[0] = FLAG;
         bufW[1] = A_TRANSMITTER;
@@ -91,27 +93,32 @@ int llopen(LinkLayer connectionParameters)
             }
             if(read(fd, &byte, 1) > 0){
                 switch(currState){
-                    case Start:
-                        if(byte == FLAG) currState = Flag_RCV;
+                    case START:
+                        if(byte == FLAG) currState = FLAG_RCV;
                         break;
-                    case Flag_RCV:
+                    case FLAG_RCV:
                         if(byte == A_RECEIVER) currState = A_RCV;
-                        else if(byte == FLAG) currState = Flag_RCV;
-                        else currState = Start;
+                        else if(byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
                         break;
                     case A_RCV:
                         if(byte == C_UA) currState = C_RCV;
-                        else if(byte == FLAG) currState = Flag_RCV;
-                        else currState = Start;
+                        else if(byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
                         break;
                     case C_RCV:
                         if(byte == (C_UA ^ A_RECEIVER)) currState = BCC_OK;
-                        else if(byte == FLAG) currState = Flag_RCV;
-                        else currState = Start;
+                        else if(byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
                         break;
                     case BCC_OK:
-                        if(byte == FLAG) { currState = Stop; alarm(0); return fd; }
-                        else currState = Start;                    
+                        if(byte == FLAG) { 
+                            currState = STOP; 
+                            alarm(0);
+                            printf("Received UA\n"); 
+                            return fd; 
+                        }
+                        else currState = START;                    
                         break;
                     default:
                         break;
@@ -122,30 +129,33 @@ int llopen(LinkLayer connectionParameters)
         }
         return -1;
 
-    } else if(connectionParameters.role == LlRx){ // FAZ SENTIDO TER TIMEOUT AQUI?!
-        while( currState != Stop){
+    } else if(connectionParameters.role == LLRX){ // FAZ SENTIDO TER TIMEOUT AQUI?!
+        while( currState != STOP){
             if(read(fd, &byte, 1) > 0){
                 switch(currState){
-                    case Start:
-                        if(byte == FLAG) currState = Flag_RCV;
+                    case START:
+                        if(byte == FLAG) currState = FLAG_RCV;
                         break;
-                    case Flag_RCV:
+                    case FLAG_RCV:
                         if(byte == A_TRANSMITTER) currState = A_RCV;
-                        else if(byte != FLAG) currState = Start;
+                        else if(byte != FLAG) currState = START;
                         break;
                     case A_RCV:
                         if(byte == C_SET) currState = C_RCV;
-                        else if(byte == FLAG) currState = Flag_RCV;
-                        else currState = Start;
+                        else if(byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
                         break;
                     case C_RCV:
                         if(byte == (C_SET ^ A_TRANSMITTER)) currState = BCC_OK;
-                        else if(byte == FLAG) currState = Flag_RCV;
-                        else currState = Start;
+                        else if(byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
                         break;
                     case BCC_OK:
-                        if(byte == FLAG) currState = Stop;
-                        else currState = Start;                    
+                        if(byte == FLAG) { 
+                            currState = STOP; 
+                            printf("Received SET\n"); 
+                        }
+                        else currState = START;                    
                         break;
                     default:
                         break;
@@ -237,9 +247,157 @@ int llread(int fd, unsigned char *packet)
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-int llclose(int showStatistics)
+int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
 {
-    // TODO
+    (void) signal(SIGALRM, alarmHandler);
 
-    return 1;
+    if (showStatistics == TRUE) {
+        // TODO
+    }
+
+    State currState = START;
+    unsigned char bufW[5] = {0};
+    unsigned char byte = 0;
+
+    if(connectionParameters.role == LLTX){
+        
+        bufW[0] = FLAG;
+        bufW[1] = A_TRANSMITTER;
+        bufW[2] = C_DISC;
+        bufW[3] = bufW[1] ^ bufW[2];
+        bufW[4] = FLAG;
+        
+        alarmCounter=0;
+        alarmEnabled = FALSE;
+
+        while(connectionParameters.nRetransmissions > alarmCounter && currState != STOP){
+            if(alarmEnabled == FALSE){
+                int resW = write(fd, bufW, 5);
+            
+                if(resW != 5){
+                    perror("write");
+                    close(fd);
+                    return -1;
+                }
+                printf("Sent DISC\n");
+                alarm(connectionParameters.timeout);
+                alarmEnabled = TRUE;
+            }
+            if(read(fd, &byte, 1) > 0){
+                switch(currState){
+                    case START:
+                        if(byte == FLAG) currState = FLAG_RCV;
+                        break;
+                    case FLAG_RCV:
+                        if(byte == A_RECEIVER) currState = A_RCV;
+                        else if(byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
+                        break;
+                    case A_RCV:
+                        if(byte == C_DISC) currState = C_RCV;
+                        else if(byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
+                        break;
+                    case C_RCV:
+                        if(byte == (C_DISC ^ A_RECEIVER)) currState = BCC_OK;
+                        else if(byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
+                        break;
+                    case BCC_OK:
+                        if(byte == FLAG) { 
+                            currState = STOP; 
+                            alarm(0);
+                            printf("Received DISC\n"); 
+                        }
+                        else currState = START;                    
+                        break;
+                    default:
+                        break;
+
+                }
+            }
+
+        }
+        if(currState == STOP){
+            bufW[0]=FLAG;
+            bufW[1]=A_TRANSMITTER;
+            bufW[2]=C_UA;
+            bufW[3]=bufW[1]^bufW[2];
+            bufW[4]=FLAG;
+
+            int resW = write(fd, bufW, 5);
+            if(resW != 5){
+                perror("write");
+                close(fd);
+                return -1;
+            }
+            printf("Sent UA\n");
+            close(fd);
+            return 1;
+
+        }
+        close(fd);
+        return -1;
+    }
+    else if(connectionParameters.role == LLRX){
+        bufW[0] = FLAG;
+        bufW[1] = A_RECEIVER;
+        bufW[2] = C_DISC;
+        bufW[3] = bufW[1] ^ bufW[2];
+        bufW[4] = FLAG;
+
+        while(connectionParameters.nRetransmissions < alarmCounter){
+            if(alarmEnabled == FALSE){
+                int resW = write(fd, bufW, 5);
+                if(resW != 5){
+                    perror("write");
+                    close(fd);
+                    return -1;
+                }
+                printf("Sent DISC\n");
+                alarm(connectionParameters.timeout);
+                alarmEnabled = TRUE;
+            }
+            if(read(fd, &byte, 1) > 0){
+                switch(currState){
+                    case START:
+                        if(byte == FLAG) currState = FLAG_RCV;
+                        break;
+                    case FLAG_RCV:
+                        if(byte == A_TRANSMITTER) currState = A_RCV;
+                        else if(byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
+                        break;
+                    case A_RCV:
+                        if(byte == C_UA) currState = C_RCV;
+                        else if(byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
+                        break;
+                    case C_RCV:
+                        if(byte == (C_UA ^ A_TRANSMITTER)) currState = BCC_OK;
+                        else if(byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
+                        break;
+                    case BCC_OK:
+                        if(byte == FLAG) { 
+                            currState = STOP; 
+                            alarm(0);
+                            printf("Received UA\n"); 
+                            close(fd);
+                            return 1;
+                        }
+                        else currState = START;                    
+                        break;
+                    default:
+                        break;
+
+                }
+            }
+        }
+    }
+    else{
+        printf("Invalid role\n");
+        close(fd);
+        return -1;
+    }
 }

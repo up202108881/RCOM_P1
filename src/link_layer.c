@@ -16,7 +16,7 @@
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
 int alarmEnabled = FALSE;
-int alarmCounter=0;
+int alarmCounter = 0;
 void alarmHandler()
 {
     alarmEnabled = FALSE;
@@ -195,23 +195,19 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
     int frameSize = bufSize + FH_SIZE + FT_SIZE;
     unsigned char *frame = (unsigned char *)malloc(frameSize * sizeof(unsigned char));
 
-    for (int i = 0; i < frameSize; i++) {
-        frame[i] = 0;
-    }
     frame[0] = FLAG;
-    frame[1] = A;
-    frame[2] = C;
+    frame[1] = A_TRANSMITTER;
+    frame[2] = C_RR0;
     frame[3] = frame[1] ^ frame[2];
-    frame[4] = buf[0];
-    frame[frameSize - 1] = FLAG;
+    memcpy(frame + FH_SIZE, buf, bufSize);
 
     unsigned char bcc2 = buf[0];
     for (int i = 1; i < bufSize; i++) {
-        frame[FH_SIZE + i] = buf[i];
         bcc2 ^= buf[i];
     }
 
-    frame[4 + bufSize] = bcc2;
+    frame[FH_SIZE + bufSize] = bcc2;
+    frame[frameSize - 1] = FLAG;
 
     int response_received = FALSE;
     
@@ -400,4 +396,60 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
         close(fd);
         return -1;
     }
+}
+
+unsigned char* byteStuffing(unsigned char* buf, int bufSize, int* stuffedBufSize) {
+    *stuffedBufSize = bufSize;
+
+    for (int i = 0; i < bufSize; i++) {
+        if (buf[i] == ESC || buf[i] == FLAG) (*stuffedBufSize)++;
+    }
+
+    unsigned char *res = (unsigned char *)malloc((*stuffedBufSize) * sizeof(unsigned char));
+
+    if (res == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+
+    int j = 0;
+    for (int i = 0; i < bufSize; i++) {
+        if (buf[i] == ESC || buf[i] == FLAG) {
+            res[j++] = ESC;
+            res[j++] = buf[i] ^ 0x20;
+            continue;
+        }
+        res[j++] = buf[i];
+    }
+    return res;
+}
+
+unsigned char* byteDestuffing(const unsigned char* stuffedBuf, int stuffedBufSize, int* destuffedBufSize) {
+    *destuffedBufSize = stuffedBufSize;
+
+    unsigned char* destuffedBuf = (unsigned char*)malloc(stuffedBufSize * sizeof(unsigned char));
+
+    if (destuffedBuf == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+
+    int i = 0, j = 0;
+    while (i < stuffedBufSize) {
+        if (stuffedBuf[i] == ESC) {
+            i++;
+            destuffedBuf[j] = stuffedBuf[i] ^ 0x20;
+        } else {
+            destuffedBuf[j] = stuffedBuf[i];
+        }
+        i++;
+        j++;
+    }
+
+    // Adjust the size of the destuffed buffer
+    *destuffedBufSize = j;
+
+    destuffedBuf = (unsigned char*)realloc(destuffedBuf, (*destuffedBufSize) * sizeof(unsigned char));
+
+    return destuffedBuf;
 }

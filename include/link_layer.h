@@ -5,6 +5,7 @@
 #define _LINK_LAYER_H_
 
 #define FLAG 0x7E
+#define ESC 0x7D
 #define A_TRANSMITTER 0x03
 #define A_RECEIVER 0x01
 #define C_SET 0x03
@@ -14,6 +15,7 @@
 #define C_RR1 0x85
 #define C_REJ0 0x01
 #define C_REJ1 0x81
+#define C_INFO_FRAME(Ns) (Ns << 6)
 
 typedef enum {
     START,
@@ -72,5 +74,13 @@ int llread(int fd, unsigned char *packet);
 // if showStatistics == TRUE, link layer should print statistics in the console on close.
 // Return "1" on success or "-1" on error.
 int llclose(int fd, LinkLayer connectionParameters, int showStatistics);
+
+// Handles byte stuffing on the data
+// Returns the stuffed data and the size of the stuffed data
+unsigned char* byteStuffing(unsigned char* buf, int bufSize, int* stuffedBufSize);
+
+// Handles byte destuffing on the data
+// Returns the destuffed data and the size of the destuffed data
+unsigned char* byteDestuffing(const unsigned char* stuffedBuf, int stuffedBufSize, int* destuffedBufSize);
 
 #endif // _LINK_LAYER_H_

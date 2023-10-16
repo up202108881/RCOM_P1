@@ -425,8 +425,6 @@ unsigned char* byteStuffing(unsigned char* buf, int bufSize, int* stuffedBufSize
 }
 
 unsigned char* byteDestuffing(const unsigned char* stuffedBuf, int stuffedBufSize, int* destuffedBufSize) {
-    *destuffedBufSize = stuffedBufSize;
-
     unsigned char* destuffedBuf = (unsigned char*)malloc(stuffedBufSize * sizeof(unsigned char));
 
     if (destuffedBuf == NULL) {
@@ -446,7 +444,6 @@ unsigned char* byteDestuffing(const unsigned char* stuffedBuf, int stuffedBufSiz
         j++;
     }
 
-    // Adjust the size of the destuffed buffer
     *destuffedBufSize = j;
 
     destuffedBuf = (unsigned char*)realloc(destuffedBuf, (*destuffedBufSize) * sizeof(unsigned char));

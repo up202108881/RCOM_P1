@@ -17,7 +17,7 @@ int alarmEnabled = FALSE;
 int alarmCounter=0;
 void alarmHandler()
 {
-    alarmEnabled = False;
+    alarmEnabled = FALSE;
     alarmCounter++;
 }
 
@@ -65,8 +65,6 @@ int llopen(LinkLayer connectionParameters)
     printf("New termios structure set\n");
 
     State currState = Start;
-    char currA = 0;
-    char currC = 0;
 
     unsigned char bufW[5] = {0};
     unsigned char byte = 0;
@@ -78,8 +76,6 @@ int llopen(LinkLayer connectionParameters)
         bufW[2] = C_SET;
         bufW[3] = bufW[1] ^ bufW[2];
         bufW[4] = FLAG;
-
-        
 
         while(connectionParameters.nRetransmissions > alarmCounter){
             if(alarmEnabled == FALSE){
@@ -94,41 +90,30 @@ int llopen(LinkLayer connectionParameters)
                 alarmEnabled = TRUE;
             }
             if(read(fd, &byte, 1) > 0){
-                switch(byte){
-                    case FLAG:
-                        if(currState == BCC_OK){
-                            printf("Received UA\n");
-                            currState = Stop;
-                            return fd;
-                        } else {
-                            currState = Flag_RCV;
-                        }
+                switch(currState){
+                    case Start:
+                        if(byte == FLAG) currState = Flag_RCV;
                         break;
-                    case A_RECEIVER:
-                        if(currState == Flag_RCV){
-                            currState = A_RCV;
-                            currA = bufR[i];
-                        } else {
-                            currState = Start;
-                        }
+                    case Flag_RCV:
+                        if(byte == A_RECEIVER) currState = A_RCV;
+                        else if(byte == FLAG) currState = Flag_RCV;
+                        else currState = Start;
                         break;
-                    case C_UA:
-                        if(currState == A_RCV){
-                            currState = C_RCV;
-                            currC = bufR[i];
-                        } else {
-                            currState = Start;
-                        }
+                    case A_RCV:
+                        if(byte == C_UA) currState = C_RCV;
+                        else if(byte == FLAG) currState = Flag_RCV;
+                        else currState = Start;
                         break;
-                    case (currA ^ currC):
-                        if(currState == C_RCV){
-                            currState = BCC_OK;
-                        } else {
-                            currState = Start;
-                        }
+                    case C_RCV:
+                        if(byte == (C_UA ^ A_RECEIVER)) currState = BCC_OK;
+                        else if(byte == FLAG) currState = Flag_RCV;
+                        else currState = Start;
+                        break;
+                    case BCC_OK:
+                        if(byte == FLAG) { currState = Stop; alarm(0); return fd; }
+                        else currState = Start;                    
                         break;
                     default:
-                        currState = Start;
                         break;
 
                 }
@@ -138,45 +123,33 @@ int llopen(LinkLayer connectionParameters)
         return -1;
 
     } else if(connectionParameters.role == LlRx){ // FAZ SENTIDO TER TIMEOUT AQUI?!
-        unsigned char bufW[5] = {0};
-        unsigned char byte = 0;
         while( currState != Stop){
             if(read(fd, &byte, 1) > 0){
-                switch(byte){
-                    case FLAG:
-                        if(currState == BCC_OK){
-                            printf("Received SET\n");
-                            currState = Stop;
-                        } else {
-                            currState = Flag_RCV;
-                        }
+                switch(currState){
+                    case Start:
+                        if(byte == FLAG) currState = Flag_RCV;
                         break;
-                    case A_TRANSMITTER:
-                        if(currState == Flag_RCV){
-                            currState = A_RCV;
-                            currA = bufR[i];
-                        } else {
-                            currState = Start;
-                        }
+                    case Flag_RCV:
+                        if(byte == A_TRANSMITTER) currState = A_RCV;
+                        else if(byte != FLAG) currState = Start;
                         break;
-                    case C_SET:
-                        if(currState == A_RCV){
-                            currState = C_RCV;
-                            currC = bufR[i];
-                        } else {
-                            currState = Start;
-                        }
+                    case A_RCV:
+                        if(byte == C_SET) currState = C_RCV;
+                        else if(byte == FLAG) currState = Flag_RCV;
+                        else currState = Start;
                         break;
-                    case (currA ^ currC):
-                        if(currState == C_RCV){
-                            currState = BCC_OK;
-                        } else {
-                            currState = Start;
-                        }
+                    case C_RCV:
+                        if(byte == (C_SET ^ A_TRANSMITTER)) currState = BCC_OK;
+                        else if(byte == FLAG) currState = Flag_RCV;
+                        else currState = Start;
+                        break;
+                    case BCC_OK:
+                        if(byte == FLAG) currState = Stop;
+                        else currState = Start;                    
                         break;
                     default:
-                        currState = Start;
                         break;
+
                 }
             }
             

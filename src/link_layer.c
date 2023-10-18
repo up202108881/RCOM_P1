@@ -15,6 +15,8 @@
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
+struct termios oldtio;
+int errorOccurred = FALSE;
 int alarmEnabled = FALSE;
 int alarmCounter = 0;
 int Ns = 0;
@@ -37,14 +39,16 @@ int llopen(LinkLayer connectionParameters)
     if (fd < 0)
     {
         perror(connectionParameters.serialPort);
+        errorOccurred = TRUE;
         return -1;
     }
 
-    struct termios oldtio, newtio;
+    struct termios newtio;
 
     if (tcgetattr(fd, &oldtio) == -1)
     { /* save current port settings */
         perror("tcgetattr");
+        errorOccurred = TRUE;
         return -1;
     }
 
@@ -64,6 +68,7 @@ int llopen(LinkLayer connectionParameters)
     if (tcsetattr(fd, TCSANOW, &newtio) == -1)
     {
         perror("tcsetattr");
+        errorOccurred = TRUE;
         return -1;
     }
 
@@ -88,6 +93,7 @@ int llopen(LinkLayer connectionParameters)
             
                 if (resW < 0) {
                     perror("write");
+                    errorOccurred = TRUE;
                     return -1;
                 }
                 printf("Sent SET\n");
@@ -130,6 +136,7 @@ int llopen(LinkLayer connectionParameters)
             }
 
         }
+        errorOccurred = TRUE;
         return -1;
 
     } else if (connectionParameters.role == LLRX) { // FAZ SENTIDO TER TIMEOUT AQUI?!
@@ -177,6 +184,7 @@ int llopen(LinkLayer connectionParameters)
         int resW = write(fd, bufW, 5);
         if (resW != 5) {
             perror("write");
+            errorOccurred = TRUE;
             return -1;
         }
         printf("Sent UA\n");
@@ -184,45 +192,127 @@ int llopen(LinkLayer connectionParameters)
 
     } else {
         printf("Invalid role\n");
+        errorOccurred = TRUE;
         return -1;
     }     
-
+    errorOccurred = TRUE;
     return -1;
 }
 
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
-int llwrite(int fd, const unsigned char *buf, int bufSize)
+int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, int bufSize)
 {   
-    int frameSize = bufSize + FH_SIZE + FT_SIZE;
-    unsigned char *frame = (unsigned char *)malloc(frameSize * sizeof(unsigned char));
-
-    frame[0] = FLAG;
-    frame[1] = A_TRANSMITTER;
-    frame[2] = C_INFO_FRAME(Ns);
-    frame[3] = frame[1] ^ frame[2];
-
     unsigned char bcc2 = buf[0];
     for (int i = 1; i < bufSize; i++) {
         bcc2 ^= buf[i];
     }
 
-    unsigned char* stuffedBuf = byteStuffing(buf, bufSize, &bufSize);
-    if (stuffedBuf == NULL) return -1;
+    int stuffedBufSize = 0;
+    unsigned char* stuffedBuf = byteStuffing(buf, bufSize, &stuffedBufSize);
+    if (stuffedBuf == NULL) {
+        errorOccurred = TRUE;
+        return -1;
+    }
+    int frameSize = FH_SIZE + stuffedBufSize + FT_SIZE;
+    unsigned char* frame = (unsigned char *)malloc(frameSize * sizeof(unsigned char));
 
-    memcpy(frame + FH_SIZE, stuffedBuf, bufSize);
+    if (frame == NULL) {
+        perror("malloc");
+        errorOccurred = TRUE;
+        return -1;
+    }
 
-    frame[FH_SIZE + bufSize] = bcc2;
+    // Construct frame header
+    frame[0] = FLAG;
+    frame[1] = A_TRANSMITTER;
+    frame[2] = C_INFO_FRAME(Ns);
+    frame[3] = frame[1] ^ frame[2];
+
+    // Construct frame data
+    memcpy(frame + FH_SIZE, stuffedBuf, stuffedBufSize);
+
+    // Construct frame trailer
+    frame[FH_SIZE + stuffedBufSize] = bcc2;
     frame[frameSize - 1] = FLAG;
 
+    State currState = START;
+    unsigned char byte = 0, receivedC = 0;
+
+    alarmCounter = 0;
+    alarmEnabled = FALSE;
+
+    while (connectionParameters.nRetransmissions > alarmCounter && currState != STOP) {
+        if (alarmEnabled == FALSE) {
+            int resW = write(fd, frame, frameSize);
+        
+            if (resW != frameSize) {
+                perror("write");
+                errorOccurred = TRUE;
+                return -1;
+            }
+            printf("Sent frame\n");
+            alarm(connectionParameters.timeout);
+            alarmEnabled = TRUE;
+        }
+        if (read(fd, &byte, 1) > 0) {
+            switch (currState) {
+                case START:
+                    if (byte == FLAG) currState = FLAG_RCV;
+                    break;
+                case FLAG_RCV:
+                    if (byte == A_RECEIVER) currState = A_RCV;
+                    else if (byte == FLAG) currState = FLAG_RCV;
+                    else currState = START;
+                    break;
+                case A_RCV:
+                    if (byte == C_RR(Ns)) currState = C_RCV;
+                    else if (byte == C_REJ(Ns)) currState = C_RCV;
+                    else if (byte == FLAG) currState = FLAG_RCV;
+                    else currState = START;
+                    receivedC = byte;
+                    break;
+                case C_RCV:
+                    if (byte == (C_RR(Ns) ^ A_RECEIVER) || byte == (C_REJ(Ns) ^ A_RECEIVER)) currState = BCC_OK;
+                    else if (byte == FLAG) currState = FLAG_RCV;
+                    else currState = START;
+                    break;
+                case BCC_OK:
+                    if (byte == FLAG) { 
+                        if (receivedC == C_RR(Ns)) {
+                            printf("Received RR\n"); 
+                            currState = STOP; 
+                            alarm(0);
+                            Ns = (Ns + 1) % 2;
+                            Nr = (Nr + 1) % 2;
+                            free(stuffedBuf);
+                            free(frame);
+                            return 1;
+                        } else if (receivedC == C_REJ(Ns)) {
+                            printf("Received REJ\n");
+                            alarm(0);
+                            alarmEnabled = FALSE;
+                            alarmCounter++;
+                            currState = START;
+
+                        }
+                    }
+                    else currState = START;                    
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+    errorOccurred = TRUE;
     return -1;
 }
 
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-int llread(int fd, unsigned char *packet)
+int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
 {
     // TODO
 
@@ -234,6 +324,13 @@ int llread(int fd, unsigned char *packet)
 ////////////////////////////////////////////////
 int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
 {
+    if (errorOccurred == TRUE) {
+        printf("Error occurred, closing...\n");
+        if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
+        close(fd);
+        return -1;
+    }
+
     (void) signal(SIGALRM, alarmHandler);
 
     if (showStatistics == TRUE) {
@@ -261,6 +358,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
             
                 if (resW != 5) {
                     perror("write");
+                    if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
                     close(fd);
                     return -1;
                 }
@@ -301,11 +399,10 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
 
                 }
             }
-
         }
         if (currState == STOP) {
             bufW[0] = FLAG;
-            bufW[1] = A_TRANSMITTER;
+            bufW[1] = A_TRANSMITTER;    
             bufW[2] = C_UA;
             bufW[3] = bufW[1] ^ bufW[2];
             bufW[4] = FLAG;
@@ -313,29 +410,82 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
             int resW = write(fd, bufW, 5);
             if (resW != 5) {
                 perror("write");
+                if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
                 close(fd);
                 return -1;
             }
+
             printf("Sent UA\n");
+            if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
             close(fd);
             return 1;
-
         }
+
+        if (connectionParameters.nRetransmissions == alarmCounter) {
+            printf("Reached maximum number of retransmissions\n");
+            if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
+            close(fd);
+            return -1;
+        }
+
+        if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
         close(fd);
         return -1;
     }
     else if (connectionParameters.role == LLRX) {
+        // for testing purposes
+        /*
+        while (currState != STOP) {
+            if (read(fd, &byte, 1) > 0) {
+                switch (currState) {
+                    case START:
+                        if (byte == FLAG) currState = FLAG_RCV;
+                        break;
+                    case FLAG_RCV:
+                        if (byte == A_TRANSMITTER) currState = A_RCV;
+                        else if (byte != FLAG) currState = START;
+                        break;
+                    case A_RCV:
+                        if (byte == C_DISC) currState = C_RCV;
+                        else if (byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
+                        break;
+                    case C_RCV:
+                        if (byte == (C_DISC ^ A_TRANSMITTER)) currState = BCC_OK;
+                        else if (byte == FLAG) currState = FLAG_RCV;
+                        else currState = START;
+                        break;
+                    case BCC_OK:
+                        if (byte == FLAG) { 
+                            currState = STOP; 
+                            printf("Received DISC\n"); 
+                        }
+                        else currState = START;                    
+                        break;
+                    default:
+                        break;
+
+                }
+            }
+            
+        }
+        */
         bufW[0] = FLAG;
         bufW[1] = A_RECEIVER;
         bufW[2] = C_DISC;
         bufW[3] = bufW[1] ^ bufW[2];
         bufW[4] = FLAG;
 
-        while (connectionParameters.nRetransmissions < alarmCounter) {
+        currState = START;
+        alarmCounter = 0;
+        alarmEnabled = FALSE;
+
+        while (connectionParameters.nRetransmissions > alarmCounter) {
             if (alarmEnabled == FALSE) {
                 int resW = write(fd, bufW, 5);
                 if (resW != 5) {
                     perror("write");
+                    if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
                     close(fd);
                     return -1;
                 }
@@ -368,6 +518,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
                             currState = STOP; 
                             alarm(0);
                             printf("Received UA\n"); 
+                            if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
                             close(fd);
                             return 1;
                         }
@@ -380,11 +531,10 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
             }
         }
     }
-    else{
-        printf("Invalid role\n");
-        close(fd);
-        return -1;
-    }
+    else printf("Invalid role\n");
+    if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
+    close(fd);
+    return -1;
 }
 
 unsigned char* byteStuffing(unsigned char* buf, int bufSize, int* stuffedBufSize) {

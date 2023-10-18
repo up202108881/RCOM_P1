@@ -11,10 +11,8 @@
 #define C_SET 0x03
 #define C_UA 0x07
 #define C_DISC 0x0B
-#define C_RR0 0x05
-#define C_RR1 0x85
-#define C_REJ0 0x01
-#define C_REJ1 0x81
+#define C_RR(Nr) ((Nr << 7) | 0x05)
+#define C_REJ(Nr) ((Nr << 7) | 0x01)
 #define C_INFO_FRAME(Ns) (Ns << 6)
 
 typedef enum {
@@ -64,11 +62,11 @@ int llopen(LinkLayer connectionParameters);
 
 // Send data in buf with size bufSize.
 // Return number of chars written, or "-1" on error.
-int llwrite(int fd, const unsigned char *buf, int bufSize);
+int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, int bufSize);
 
 // Receive data in packet.
 // Return number of chars read, or "-1" on error.
-int llread(int fd, unsigned char *packet);
+int llread(int fd, LinkLayer connectionParameters, unsigned char *packet);
 
 // Close previously opened connection.
 // if showStatistics == TRUE, link layer should print statistics in the console on close.

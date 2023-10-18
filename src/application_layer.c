@@ -11,19 +11,19 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     linkLayer.baudRate = baudRate;
     linkLayer.nRetransmissions = nTries;
     linkLayer.timeout = timeout;
-    if(!strcmp(role,"tx")){
+    if (!strcmp(role,"tx")) {
         linkLayer.role = LLTX;
     }
-    else if(!strcmp(role,"rx")){
+    else if (!strcmp(role, "rx")) {
         linkLayer.role = LLRX;
     }
-    else{
+    else {
         printf("Invalid role\n");
         exit(1);
     }
     int fd = llopen(linkLayer);
-    if(fd == -1)printf("Ardeu! OPEN\n");
-    else printf("NOT ARDEU! OPEN\n");
-    if(llclose(fd, linkLayer, FALSE)==-1)printf("Ardeu! CLOSE\n");
-    else printf("NOT ARDEU! CLOSE\n");
+    if (fd == -1) printf("DOES NOT WORK! OPEN\n");
+    else printf("WORKS! OPEN\n");
+    if (llclose(fd, linkLayer, FALSE) == -1) printf("DOES NOT WORK! CLOSE\n");
+    else printf("WORKS! CLOSE\n");
 }

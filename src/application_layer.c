@@ -24,6 +24,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     int fd = llopen(linkLayer);
     if (fd == -1) printf("DOES NOT WORK! OPEN\n");
     else printf("WORKS! OPEN\n");
-    if (llclose(fd, linkLayer, FALSE) == -1) printf("DOES NOT WORK! CLOSE\n");
-    else printf("WORKS! CLOSE\n");
+    if (linkLayer.role == LLTX && llclose(fd, linkLayer, FALSE) == -1) printf("DOES NOT WORK! CLOSE\n");
+    else if (linkLayer.role == LLTX) printf("WORKS! CLOSE\n");
 }

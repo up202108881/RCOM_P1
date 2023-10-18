@@ -77,7 +77,7 @@ int llopen(LinkLayer connectionParameters)
     State currState = START;
 
     unsigned char bufW[5] = {0};
-    unsigned char byte = 0;
+    unsigned char byte;
 
     if(connectionParameters.role == LLTX){
 
@@ -238,7 +238,7 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
     frame[frameSize - 1] = FLAG;
 
     State currState = START;
-    unsigned char byte = 0, receivedC = 0;
+    unsigned char byte, receivedC;
 
     alarmCounter = 0;
     alarmEnabled = FALSE;
@@ -314,8 +314,122 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
 ////////////////////////////////////////////////
 int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
 {
-    // TODO
+    unsigned char byte, receivedC;
+    int packetSize = 0;
+    unsigned char* stuffedPacket = (unsigned char*)malloc(MAX_PAYLOAD_SIZE * sizeof(unsigned char));
 
+    if (stuffedPacket == NULL) {
+        perror("malloc");
+        errorOccurred = TRUE;
+        return -1;
+    }
+
+    State currState = START;
+    alarmCounter = 0;
+    alarmEnabled = FALSE;
+
+    while (currState != STOP) {
+        if (read(fd, &byte, 1) > 0) {
+            switch (currState) {
+                case START:
+                    if (byte == FLAG) currState = FLAG_RCV;
+                    break;
+                case FLAG_RCV:
+                    if (byte == A_TRANSMITTER) currState = A_RCV;
+                    else if (byte == FLAG) currState = FLAG_RCV;
+                    else currState = START;
+                    break;
+                case A_RCV:
+                    if (byte == C_INFO_FRAME(0) || byte == C_INFO_FRAME(1)) { 
+                        currState = C_RCV;
+                        receivedC = byte;
+                    }
+                    else if (byte == FLAG) currState = FLAG_RCV;
+                    else currState = START;
+                    break;
+                case C_RCV:
+                    if (byte == (receivedC ^ A_TRANSMITTER)) currState = BCC_OK;
+                    else if (byte == FLAG) currState = FLAG_RCV;
+                    else currState = START;
+                    break;
+                case BCC_OK:
+                    if (byte == FLAG) { 
+                        unsigned char bcc2 = stuffedPacket[packetSize - 1];
+                        packetSize--;
+                        stuffedPacket[packetSize] = '\0';
+                        stuffedPacket = (unsigned char*)realloc(stuffedPacket, packetSize * sizeof(unsigned char));
+
+                        unsigned char* destuffedPacket = byteDestuffing(stuffedPacket, packetSize, &packetSize);
+                        if (destuffedPacket == NULL) {
+                            errorOccurred = TRUE;
+                            return -1;
+                        }
+
+                        unsigned char bcc2Check = destuffedPacket[0];
+                        for (int i = 1; i < packetSize; i++) {
+                            bcc2Check ^= destuffedPacket[i];
+                        }
+
+                        unsigned char frame[5] = {0};
+
+                        frame[0] = FLAG;
+                        frame[1] = A_RECEIVER;
+                        frame[4] = FLAG;
+
+                        if (bcc2Check != bcc2) {
+                            printf("BCC2 check failed\n");
+
+                            frame[2] = C_REJ(Nr);
+                            frame[3] = frame[1] ^ frame[2];
+
+                            int resW = write(fd, frame, 5);
+        
+                            if (resW != 5) {
+                                perror("write");
+                                errorOccurred = TRUE;
+                                return -1;
+                            }
+
+                            printf("Sent rejection frame\n");
+                            free(destuffedPacket);
+                            free(stuffedPacket);
+                            return packetSize;
+                        }
+                        else {
+                            printf("BCC2 check succeeded\n");
+
+                            frame[2] = C_RR(Nr);
+                            frame[3] = frame[1] ^ frame[2];
+
+                            int resW = write(fd, frame, 5);
+        
+                            if (resW != 5) {
+                                perror("write");
+                                errorOccurred = TRUE;
+                                return -1;
+                            }
+
+                            printf("Sent RR frame\n");
+                            free(destuffedPacket);
+                            free(stuffedPacket);
+                            return packetSize;
+                        }
+
+                    }
+                    else stuffedPacket[packetSize++] = byte;                 
+                    break;
+                default:
+                    break;
+            }
+            if (currState == C_RCV) {
+                stuffedPacket[packetSize++] = byte;
+            }
+            else if (currState == BCC_OK) {
+                stuffedPacket[packetSize++] = byte;
+                break;
+            }
+        }
+    }
     return 0;
 }
 
@@ -339,7 +453,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
 
     State currState = START;
     unsigned char bufW[5] = {0};
-    unsigned char byte = 0;
+    unsigned char byte;
 
     if (connectionParameters.role == LLTX) {
         

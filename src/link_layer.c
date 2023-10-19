@@ -293,9 +293,7 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
                             printf("Received REJ\n");
                             alarm(0);
                             alarmEnabled = FALSE;
-                            alarmCounter++;
                             currState = START;
-
                         }
                     }
                     else currState = START;                    

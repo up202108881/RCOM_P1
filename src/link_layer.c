@@ -215,6 +215,19 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
         errorOccurred = TRUE;
         return -1;
     }
+
+    if (bcc2 == FLAG || bcc2 == ESC) {
+        stuffedBufSize++;
+        stuffedBuf = (unsigned char*)realloc(stuffedBuf, stuffedBufSize * sizeof(unsigned char));
+        if (stuffedBuf == NULL) {
+            perror("realloc");
+            errorOccurred = TRUE;
+            return -1;
+        }
+        stuffedBuf[stuffedBufSize - 1] = ESC;
+        stuffedBuf[stuffedBufSize - 2] = bcc2 ^ 0x20;
+    }
+
     int frameSize = FH_SIZE + stuffedBufSize + FT_SIZE;
     unsigned char* frame = (unsigned char *)malloc(frameSize * sizeof(unsigned char));
 
@@ -230,11 +243,10 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
     frame[2] = C_INFO_FRAME(Ns);
     frame[3] = frame[1] ^ frame[2];
 
-    // Construct frame data
+    // Construct frame data and bcc2
     memcpy(frame + FH_SIZE, stuffedBuf, stuffedBufSize);
 
-    // Construct frame trailer
-    frame[FH_SIZE + stuffedBufSize] = bcc2;
+    // Construct flag from the frame trailer
     frame[frameSize - 1] = FLAG;
 
     State currState = START;
@@ -243,7 +255,7 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
     alarmCounter = 0;
     alarmEnabled = FALSE;
 
-    while (connectionParameters.nRetransmissions > alarmCounter && currState != STOP) {
+    while (connectionParameters.nRetransmissions > alarmCounter) {
         if (alarmEnabled == FALSE) {
             int resW = write(fd, frame, frameSize);
         
@@ -282,7 +294,6 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
                     if (byte == FLAG) { 
                         if (receivedC == C_RR(Ns)) {
                             printf("Received RR\n"); 
-                            currState = STOP; 
                             alarm(0);
                             Ns = (Ns + 1) % 2;
                             Nr = (Nr + 1) % 2;
@@ -351,13 +362,14 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
                     else currState = START;
                     break;
                 case BCC_OK:
-                    if (byte == FLAG) { 
-                        unsigned char bcc2 = stuffedPacket[packetSize - 1];
-                        packetSize--;
-                        stuffedPacket[packetSize] = '\0';
+                    if (byte == FLAG) {
                         stuffedPacket = (unsigned char*)realloc(stuffedPacket, packetSize * sizeof(unsigned char));
 
                         unsigned char* destuffedPacket = byteDestuffing(stuffedPacket, packetSize, &packetSize);
+                        packetSize--;
+
+                        unsigned char bcc2 = destuffedPacket[packetSize];
+
                         if (destuffedPacket == NULL) {
                             errorOccurred = TRUE;
                             return -1;
@@ -545,8 +557,6 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
         return -1;
     }
     else if (connectionParameters.role == LLRX) {
-        // for testing purposes
-        /*
         while (currState != STOP) {
             if (read(fd, &byte, 1) > 0) {
                 switch (currState) {
@@ -581,7 +591,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
             }
             
         }
-        */
+
         bufW[0] = FLAG;
         bufW[1] = A_RECEIVER;
         bufW[2] = C_DISC;

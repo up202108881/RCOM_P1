@@ -198,7 +198,7 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
     for (int i = 1; i < bufSize; i++) {
         bcc2 ^= buf[i];
     }
-
+    
     int stuffedBufSize = 0;
     unsigned char* stuffedBuf = byteStuffing(buf, bufSize, &stuffedBufSize);
     if (stuffedBuf == NULL) {
@@ -649,7 +649,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
     return -1;
 }
 
-unsigned char* byteStuffing(unsigned char* buf, int bufSize, int* stuffedBufSize) {
+unsigned char* byteStuffing(const unsigned char* buf, int bufSize, int* stuffedBufSize) {
     *stuffedBufSize = bufSize;
 
     for (int i = 0; i < bufSize; i++) {
@@ -675,7 +675,7 @@ unsigned char* byteStuffing(unsigned char* buf, int bufSize, int* stuffedBufSize
     return res;
 }
 
-unsigned char* byteDestuffing(unsigned char* stuffedBuf, int stuffedBufSize, int* destuffedBufSize) {
+unsigned char* byteDestuffing(const unsigned char* stuffedBuf, int stuffedBufSize, int* destuffedBufSize) {
     unsigned char* destuffedBuf = (unsigned char*)malloc(stuffedBufSize * sizeof(unsigned char));
 
     if (destuffedBuf == NULL) {

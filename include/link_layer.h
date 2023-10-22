@@ -86,10 +86,10 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics);
 
 // Handles byte stuffing on the data
 // Returns the stuffed data and the size of the stuffed data
-unsigned char* byteStuffing(unsigned char* buf, int bufSize, int* stuffedBufSize);
+unsigned char* byteStuffing(const unsigned char* buf, int bufSize, int* stuffedBufSize);
 
 // Handles byte destuffing on the data
 // Returns the destuffed data and the size of the destuffed data
-unsigned char* byteDestuffing(unsigned char* stuffedBuf, int stuffedBufSize, int* destuffedBufSize);
+unsigned char* byteDestuffing(const unsigned char* stuffedBuf, int stuffedBufSize, int* destuffedBufSize);
 
 #endif // _LINK_LAYER_H_

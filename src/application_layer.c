@@ -28,7 +28,7 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
     else printf("Connection established.\n");
 
     switch (linkLayer.role) {
-        case LLTX:
+        case LLTX: {
             FILE* file = fopen(filename, "rb");
 
             if (file == NULL) {
@@ -85,7 +85,8 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
             free(endPacket);
             fclose(file);
             break;
-        case LLRX:
+        }
+        case LLRX: {
             unsigned char* controlPacket = (unsigned char*)malloc(MAX_PAYLOAD_SIZE * sizeof(unsigned char));
             unsigned int controlPacketSize = llread(fd, linkLayer, controlPacket);
 
@@ -102,7 +103,7 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
                 break;
             }
 
-            FILE* file = fopen(filename, "wb");
+            FILE* newFile = fopen(filename, "wb");
             while (TRUE) {
                 unsigned char* dataPacket = (unsigned char*)malloc(MAX_PAYLOAD_SIZE * sizeof(unsigned char));
                 unsigned int dataPacketSize = llread(fd, linkLayer, dataPacket);
@@ -121,12 +122,14 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
                     break;
                 }
 
-                fwrite(dataPacket, sizeof(unsigned char), dataSize, file);
+                fwrite(dataPacket, sizeof(unsigned char), dataSize, newFile);
                 free(dataPacket);
             }
 
             free(controlPacket);
+            fclose(newFile);
             break;
+        }
         default:
             printf("Invalid role\n");
             exit(1);
@@ -137,12 +140,11 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
         exit(1);
     }
     else printf("Connection finished.\n");
-    return 0;
 }
 
 unsigned char* createControlPacket(unsigned char controlField, unsigned int* packetSize) {
     switch (controlField) {
-        case CP_START:
+        case CP_START: {
             unsigned int fileSize = *packetSize;
             unsigned int fileSizeBytes = 0;
 
@@ -162,11 +164,12 @@ unsigned char* createControlPacket(unsigned char controlField, unsigned int* pac
 
             *packetSize = CP_HEADER_SIZE + fileSizeBytes;
             return packet;
-        
-        case CP_END:
-            unsigned char* packet[1] = {controlField};
+        }
+        case CP_END: {
+            unsigned char* packet = (unsigned char*)malloc(1);
+            packet[0] = controlField;
             return packet;
-
+        }
         default:
             printf("Invalid role\n");
             return NULL;

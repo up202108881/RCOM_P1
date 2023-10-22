@@ -10,7 +10,7 @@
 
 #define CP_START 0x02
 #define CP_END 0x03
-#define CP_DATA 0x01
+#define DP_DATA 0x01
 
 #define CP_T_FILE_SIZE 0
 

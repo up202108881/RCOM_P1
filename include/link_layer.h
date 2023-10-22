@@ -4,6 +4,17 @@
 #ifndef _LINK_LAYER_H_
 #define _LINK_LAYER_H_
 
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <termios.h>
+#include <unistd.h>
+#include <signal.h>
+#include <time.h>
+
 #define FLAG 0x7E
 #define ESC 0x7D
 #define A_TRANSMITTER 0x03

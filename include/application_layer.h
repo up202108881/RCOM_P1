@@ -25,8 +25,12 @@
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename);
 
-unsigned char * createControlPacket(unsigned char controlField, unsigned int * packetSize);
+unsigned char* createControlPacket(unsigned char controlField, unsigned int* packetSize);
 
-unsigned char * createDataPacket(unsigned char * data, unsigned int * packetSize);
+unsigned char* createDataPacket(unsigned char* data, unsigned int* packetSize);
+
+unsigned char* parseControlPacket(unsigned char* packet, unsigned int packetSize, unsigned int* fileSize);
+
+unsigned int parseDataPacket(unsigned char* packet, unsigned int packetSize, unsigned char* data);
 
 #endif // _APPLICATION_LAYER_H_

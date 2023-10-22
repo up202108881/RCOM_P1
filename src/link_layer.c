@@ -409,6 +409,9 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
                                 return -1;
                             }
 
+                            packet = (unsigned char*)realloc(packet, packetSize * sizeof(unsigned char));
+                            packet = destuffedPacket;
+
                             printf("Sent RR frame\n");
                             free(destuffedPacket);
                             free(stuffedPacket);

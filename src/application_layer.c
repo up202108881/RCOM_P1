@@ -43,7 +43,9 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
             unsigned int controlPacketSize = fileSize;
             unsigned char* controlPacket = createControlPacket(CP_START, &controlPacketSize);
 
-            if (llwrite(fd, linkLayer, controlPacket, controlPacketSize) == -1) {
+            int check = llwrite(fd, linkLayer, controlPacket, controlPacketSize);
+
+            if (check == -1) {
                 printf("Error occurred!\n");
                 break;
             }
@@ -55,15 +57,20 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
             int errorOccurred = FALSE;
 
             while (remainingBytes >= 0) {
-                unsigned int packetSize = remainingBytes > MAX_PAYLOAD_SIZE ? MAX_PAYLOAD_SIZE : remainingBytes;
+                unsigned int packetSize = remainingBytes > (MAX_PAYLOAD_SIZE - 3) ? (MAX_PAYLOAD_SIZE - 3) : remainingBytes;
                 unsigned int dataSize = packetSize;
                 unsigned char* packet = createDataPacket(data, &packetSize);
 
-                if (llwrite(fd, linkLayer, packet, packetSize) == -1) {
+                long long bytesWritten = llwrite(fd, linkLayer, packet, packetSize)
+
+                if (bytesWritten == -1) {
                     printf("Error occurred!\n");
                     errorOccurred = TRUE;
                     break;
                 }
+
+                printf("Bytes written: %ld\n", bytesWritten);
+                printf("Bytes left: %ld\n", remainingBytes);
 
                 remainingBytes -= (long long) dataSize;
                 data += dataSize;
@@ -90,17 +97,9 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
             unsigned char* controlPacket = (unsigned char*)malloc(MAX_PAYLOAD_SIZE * sizeof(unsigned char));
             unsigned int controlPacketSize = llread(fd, linkLayer, controlPacket);
 
-            if (controlPacketSize == -1) {
-                printf("Error occurred!\n");
-                break;
-            }
-
             unsigned long long fileSize = 0;
-            controlPacket = parseControlPacket(controlPacket, controlPacketSize, &fileSize);
-
-            if (controlPacket == NULL) {
-                printf("Error occurred!\n");
-                break;
+            while (parseControlPacket(controlPacket, controlPacketSize, &fileSize) < 0) {
+                controlPacketSize = llread(fd, linkLayer, controlPacket);
             }
 
             FILE* newFile = fopen(filename, "wb");
@@ -115,14 +114,15 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
 
                 if (dataPacket[0] == CP_END) break;
 
-                unsigned int dataSize = parseDataPacket(dataPacket, dataPacketSize, dataPacket);
+                unsigned char *receivedData = (unsigned char*)malloc(MAX_PAYLOAD_SIZE * sizeof(unsigned char));
+                unsigned int dataSize = parseDataPacket(dataPacket, dataPacketSize, receivedData);
 
-                if (dataPacket == NULL) {
+                if (receivedData == NULL) {
                     printf("Error occurred!\n");
                     break;
                 }
 
-                fwrite(dataPacket, sizeof(unsigned char), dataSize, newFile);
+                fwrite(receivedData, sizeof(unsigned char), dataSize, newFile);
                 free(dataPacket);
             }
 
@@ -136,7 +136,7 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
     }
 
     if (llclose(fd, linkLayer, FALSE) == -1) {
-        printf("Error occurred!\n");
+        printf("Error occurred while disconnecting!\n");
         exit(1);
     }
     else printf("Connection finished.\n");
@@ -148,17 +148,17 @@ unsigned char* createControlPacket(unsigned char controlField, unsigned int* pac
             unsigned int fileSize = *packetSize;
             unsigned int fileSizeBytes = 0;
 
-            while(fileSize != 0){
+            while (fileSize != 0) {
                 fileSizeBytes++;
                 fileSize = fileSize >> 8;
             }
             
-            unsigned char* packet =  (unsigned char*)malloc(CP_HEADER_SIZE + fileSizeBytes);
+            unsigned char* packet = (unsigned char*)malloc(CP_HEADER_SIZE + fileSizeBytes);
             packet[0] = controlField;
             packet[1] = CP_T_FILE_SIZE;
             packet[2] = fileSizeBytes;
 
-            for (unsigned int i = 0; i < fileSizeBytes; i++){
+            for (unsigned int i = 0; i < fileSizeBytes; i++) {
                 packet[CP_HEADER_SIZE + i] = ((*packetSize) >> (8 * (fileSizeBytes - i - 1))) & 0xFF;
             }
 
@@ -193,16 +193,16 @@ unsigned char* createDataPacket(unsigned char* data, unsigned int* packetSize) {
     return packet;
 }
 
-unsigned char* parseControlPacket(unsigned char* packet, unsigned int packetSize, unsigned int* fileSize) {
+int parseControlPacket(unsigned char* packet, unsigned int packetSize, unsigned int* fileSize) {
     if (packet[0] != CP_START && packet[0] != CP_END) {
         printf("Invalid control packet.\n");
-        return NULL;
+        return -1;
     }
 
     if (packet[0] == CP_START) {
         if (packet[1] != CP_T_FILE_SIZE) {
             printf("Invalid control packet.\n");
-            return NULL;
+            return -1;
         }
 
         unsigned int fileSizeBytes = packet[2];
@@ -213,7 +213,8 @@ unsigned char* parseControlPacket(unsigned char* packet, unsigned int packetSize
         }
     }
 
-    return packet;
+    printf("Control packet parsed successfully.\n");
+    return 0;
 }
 
 unsigned int parseDataPacket(unsigned char* packet, unsigned int packetSize, unsigned char* data) {

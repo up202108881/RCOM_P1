@@ -69,7 +69,7 @@ int llopen(LinkLayer connectionParameters)
     unsigned char bufW[5] = {0};
     unsigned char byte;
 
-    if(connectionParameters.role == LLTX){
+    if (connectionParameters.role == LLTX) {
 
         bufW[0] = FLAG;
         bufW[1] = A_TRANSMITTER;
@@ -129,7 +129,7 @@ int llopen(LinkLayer connectionParameters)
         errorOccurred = TRUE;
         return -1;
 
-    } else if (connectionParameters.role == LLRX) { // FAZ SENTIDO TER TIMEOUT AQUI?!
+    } else if (connectionParameters.role == LLRX) {
         while (currState != STOP) {
             if (read(fd, &byte, 1) > 0) {
                 switch (currState) {
@@ -177,7 +177,6 @@ int llopen(LinkLayer connectionParameters)
             errorOccurred = TRUE;
             return -1;
         }
-        printf("Sent UA\n");
         return fd;
 
     } else {
@@ -198,7 +197,7 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
     for (int i = 1; i < bufSize; i++) {
         bcc2 ^= buf[i];
     }
-    
+
     int stuffedBufSize = 0;
     unsigned char* stuffedBuf = byteStuffing(buf, bufSize, &stuffedBufSize);
     if (stuffedBuf == NULL) {
@@ -206,6 +205,7 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
         return -1;
     }
 
+    stuffedBufSize++;
     if (bcc2 == FLAG || bcc2 == ESC) {
         stuffedBufSize++;
         stuffedBuf = (unsigned char*)realloc(stuffedBuf, stuffedBufSize * sizeof(unsigned char));
@@ -214,11 +214,15 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
             errorOccurred = TRUE;
             return -1;
         }
-        stuffedBuf[stuffedBufSize - 1] = ESC;
-        stuffedBuf[stuffedBufSize - 2] = bcc2 ^ 0x20;
+        stuffedBuf[stuffedBufSize - 2] = ESC;
+        stuffedBuf[stuffedBufSize - 1] = bcc2 ^ 0x20;
+    }
+    else {
+        stuffedBuf = (unsigned char*)realloc(stuffedBuf, stuffedBufSize * sizeof(unsigned char));
+        stuffedBuf[stuffedBufSize - 1] = bcc2;
     }
 
-    int frameSize = FH_SIZE + stuffedBufSize + FT_SIZE;
+    int frameSize = FH_SIZE + stuffedBufSize + 1;
     unsigned char* frame = (unsigned char *)malloc(frameSize * sizeof(unsigned char));
 
     if (frame == NULL) {
@@ -254,7 +258,6 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
                 errorOccurred = TRUE;
                 return -1;
             }
-            printf("Sent frame\n");
             alarm(connectionParameters.timeout);
             alarmEnabled = TRUE;
         }
@@ -283,15 +286,13 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
                 case BCC_OK:
                     if (byte == FLAG) { 
                         if (receivedC == C_RR(Ns)) {
-                            printf("Received RR\n"); 
                             alarm(0);
                             Ns = (Ns + 1) % 2;
-                            Nr = (Nr + 1) % 2;
                             free(stuffedBuf);
                             free(frame);
                             return 1;
                         } else if (receivedC == C_REJ(Ns)) {
-                            printf("Received REJ\n");
+                            printf("Received REJ. Retransmitting...\n");
                             alarm(0);
                             alarmEnabled = FALSE;
                             currState = START;
@@ -315,7 +316,7 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
 {
     unsigned char byte, receivedC;
     int packetSize = 0;
-    unsigned char* stuffedPacket = (unsigned char*)malloc(MAX_PAYLOAD_SIZE * sizeof(unsigned char));
+    unsigned char* stuffedPacket = (unsigned char*)malloc((2 * (MAX_PAYLOAD_SIZE + 1)) * sizeof(unsigned char));
 
     if (stuffedPacket == NULL) {
         perror("malloc");
@@ -356,9 +357,17 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
                         stuffedPacket = (unsigned char*)realloc(stuffedPacket, packetSize * sizeof(unsigned char));
 
                         unsigned char* destuffedPacket = byteDestuffing(stuffedPacket, packetSize, &packetSize);
+
+                        if (destuffedPacket == NULL) {
+                            errorOccurred = TRUE;
+                            return -1;
+                        }
+
                         packetSize--;
 
                         unsigned char bcc2 = destuffedPacket[packetSize];
+
+                        destuffedPacket = (unsigned char*)realloc(destuffedPacket, packetSize * sizeof(unsigned char));
 
                         if (destuffedPacket == NULL) {
                             errorOccurred = TRUE;
@@ -390,16 +399,16 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
                                 return -1;
                             }
 
-                            printf("Sent rejection frame\n");
+                            printf("Sent REJ frame\n");
                             free(destuffedPacket);
                             free(stuffedPacket);
                             return packetSize;
                         }
                         else {
-                            printf("BCC2 check succeeded\n");
-
                             frame[2] = C_RR(Nr);
                             frame[3] = frame[1] ^ frame[2];
+
+                            Nr = (Nr + 1) % 2;
 
                             int resW = write(fd, frame, 5);
         
@@ -408,28 +417,19 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
                                 errorOccurred = TRUE;
                                 return -1;
                             }
+                            
+                            for (int i = 0; i < packetSize; i++) packet[i] = destuffedPacket[i];
 
-                            packet = (unsigned char*)realloc(packet, packetSize * sizeof(unsigned char));
-                            packet = destuffedPacket;
-
-                            printf("Sent RR frame\n");
                             free(destuffedPacket);
                             free(stuffedPacket);
                             return packetSize;
                         }
 
                     }
-                    else stuffedPacket[packetSize++] = byte;                 
+                    else stuffedPacket[packetSize++] = byte;       
                     break;
                 default:
                     break;
-            }
-            if (currState == C_RCV) {
-                stuffedPacket[packetSize++] = byte;
-            }
-            else if (currState == BCC_OK) {
-                stuffedPacket[packetSize++] = byte;
-                break;
             }
         }
     }
@@ -442,7 +442,6 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
 int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
 {
     if (errorOccurred == TRUE) {
-        printf("Error occurred, closing...\n");
         if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
         close(fd);
         return -1;
@@ -539,7 +538,6 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
         }
 
         if (connectionParameters.nRetransmissions == alarmCounter) {
-            printf("Reached maximum number of retransmissions\n");
             if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
             close(fd);
             return -1;

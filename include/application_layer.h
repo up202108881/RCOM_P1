@@ -29,7 +29,7 @@ unsigned char* createControlPacket(unsigned char controlField, unsigned int* pac
 
 unsigned char* createDataPacket(unsigned char* data, unsigned int* packetSize);
 
-unsigned char* parseControlPacket(unsigned char* packet, unsigned int packetSize, unsigned int* fileSize);
+int parseControlPacket(unsigned char* packet, unsigned int packetSize, unsigned int* fileSize);
 
 unsigned int parseDataPacket(unsigned char* packet, unsigned int packetSize, unsigned char* data);
 

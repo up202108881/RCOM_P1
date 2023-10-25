@@ -240,11 +240,12 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
     while (connectionParameters.nRetransmissions > alarmCounter) {
         if (alarmEnabled == FALSE) {
             int resW = write(fd, frame, frameSize);
-        
+            
             if (resW != frameSize) {
                 perror("write");
                 return -1;
-            }
+            } 
+            // int resW = write(fd, frame[0], 1);
             alarm(connectionParameters.timeout);
             alarmEnabled = TRUE;
         }
@@ -315,6 +316,7 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
 
     while (currState != STOP) {
         if (read(fd, &byte, 1) > 0) {
+            printf("Received byte: [0x%02X]\n", byte);
             switch (currState) {
                 case START:
                     if (byte == FLAG) currState = FLAG_RCV;
@@ -323,11 +325,13 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
                     if (byte == A_TRANSMITTER) currState = A_RCV;
                     else if (byte == FLAG) currState = FLAG_RCV;
                     else currState = START;
+                    printf("INSIDE FLAG_RCV\n");
                     break;
                 case A_RCV:
                     if (byte == C_INFO_FRAME(0) || byte == C_INFO_FRAME(1)) { 
                         currState = C_RCV;
                         receivedC = byte;
+                        printf("INSIDE A_RCV\n");
                     }
                     else if (byte == FLAG) currState = FLAG_RCV;
                     else currState = START;
@@ -444,16 +448,18 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
         alarmEnabled = FALSE;
 
         while (connectionParameters.nRetransmissions > alarmCounter && currState != STOP) {
-            if (alarmEnabled == FALSE) {
+            if (alarmEnabled == FALSE) { /*
                 int resW = write(fd, bufW, 5);
-            
+                
                 if (resW != 5) {
                     perror("write");
                     if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
                     close(fd);
                     return -1;
-                }
+                } */
                 printf("Sent DISC\n");
+                printf("Sending all elements...\n");
+                int resW = write(fd, bufW, 5);
                 alarm(connectionParameters.timeout);
                 alarmEnabled = TRUE;
             }
@@ -577,6 +583,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
                     close(fd);
                     return -1;
                 }
+        
                 printf("Sent DISC\n");
                 alarm(connectionParameters.timeout);
                 alarmEnabled = TRUE;

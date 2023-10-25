@@ -31,6 +31,6 @@ unsigned char* createDataPacket(unsigned char* data, unsigned int* packetSize);
 
 int parseControlPacket(unsigned char* packet, unsigned int packetSize, unsigned int* fileSize);
 
-unsigned int parseDataPacket(unsigned char* packet, unsigned int packetSize, unsigned char* data);
+int parseDataPacket(unsigned char* packet, unsigned int packetSize, unsigned char* data);
 
 #endif // _APPLICATION_LAYER_H_

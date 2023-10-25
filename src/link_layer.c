@@ -6,7 +6,6 @@
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
 struct termios oldtio;
-int errorOccurred = FALSE;
 int alarmEnabled = FALSE;
 int alarmCounter = 0;
 int Ns = 0;
@@ -29,7 +28,6 @@ int llopen(LinkLayer connectionParameters)
     if (fd < 0)
     {
         perror(connectionParameters.serialPort);
-        errorOccurred = TRUE;
         return -1;
     }
 
@@ -38,7 +36,6 @@ int llopen(LinkLayer connectionParameters)
     if (tcgetattr(fd, &oldtio) == -1)
     { /* save current port settings */
         perror("tcgetattr");
-        errorOccurred = TRUE;
         return -1;
     }
 
@@ -58,7 +55,6 @@ int llopen(LinkLayer connectionParameters)
     if (tcsetattr(fd, TCSANOW, &newtio) == -1)
     {
         perror("tcsetattr");
-        errorOccurred = TRUE;
         return -1;
     }
 
@@ -83,7 +79,6 @@ int llopen(LinkLayer connectionParameters)
             
                 if (resW < 0) {
                     perror("write");
-                    errorOccurred = TRUE;
                     return -1;
                 }
                 printf("Sent SET\n");
@@ -126,7 +121,6 @@ int llopen(LinkLayer connectionParameters)
             }
 
         }
-        errorOccurred = TRUE;
         return -1;
 
     } else if (connectionParameters.role == LLRX) {
@@ -172,19 +166,16 @@ int llopen(LinkLayer connectionParameters)
         bufW[4] = FLAG;
 
         int resW = write(fd, bufW, 5);
+
         if (resW != 5) {
             perror("write");
-            errorOccurred = TRUE;
             return -1;
         }
+
         return fd;
 
-    } else {
-        printf("Invalid role\n");
-        errorOccurred = TRUE;
-        return -1;
-    }     
-    errorOccurred = TRUE;
+    } else printf("Invalid role\n");     
+
     return -1;
 }
 
@@ -201,7 +192,6 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
     int stuffedBufSize = 0;
     unsigned char* stuffedBuf = byteStuffing(buf, bufSize, &stuffedBufSize);
     if (stuffedBuf == NULL) {
-        errorOccurred = TRUE;
         return -1;
     }
 
@@ -211,7 +201,6 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
         stuffedBuf = (unsigned char*)realloc(stuffedBuf, stuffedBufSize * sizeof(unsigned char));
         if (stuffedBuf == NULL) {
             perror("realloc");
-            errorOccurred = TRUE;
             return -1;
         }
         stuffedBuf[stuffedBufSize - 2] = ESC;
@@ -227,7 +216,6 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
 
     if (frame == NULL) {
         perror("malloc");
-        errorOccurred = TRUE;
         return -1;
     }
 
@@ -255,7 +243,6 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
         
             if (resW != frameSize) {
                 perror("write");
-                errorOccurred = TRUE;
                 return -1;
             }
             alarm(connectionParameters.timeout);
@@ -290,7 +277,7 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
                             Ns = (Ns + 1) % 2;
                             free(stuffedBuf);
                             free(frame);
-                            return 1;
+                            return stuffedBufSize - 1;
                         } else if (receivedC == C_REJ(Ns)) {
                             printf("Received REJ. Retransmitting...\n");
                             alarm(0);
@@ -305,7 +292,6 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
             }
         }
     }
-    errorOccurred = TRUE;
     return -1;
 }
 
@@ -320,7 +306,6 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
 
     if (stuffedPacket == NULL) {
         perror("malloc");
-        errorOccurred = TRUE;
         return -1;
     }
 
@@ -359,7 +344,6 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
                         unsigned char* destuffedPacket = byteDestuffing(stuffedPacket, packetSize, &packetSize);
 
                         if (destuffedPacket == NULL) {
-                            errorOccurred = TRUE;
                             return -1;
                         }
 
@@ -370,7 +354,6 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
                         destuffedPacket = (unsigned char*)realloc(destuffedPacket, packetSize * sizeof(unsigned char));
 
                         if (destuffedPacket == NULL) {
-                            errorOccurred = TRUE;
                             return -1;
                         }
 
@@ -395,7 +378,6 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
         
                             if (resW != 5) {
                                 perror("write");
-                                errorOccurred = TRUE;
                                 return -1;
                             }
 
@@ -414,7 +396,6 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
         
                             if (resW != 5) {
                                 perror("write");
-                                errorOccurred = TRUE;
                                 return -1;
                             }
                             
@@ -441,12 +422,6 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
 ////////////////////////////////////////////////
 int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
 {
-    if (errorOccurred == TRUE) {
-        if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
-        close(fd);
-        return -1;
-    }
-
     (void) signal(SIGALRM, alarmHandler);
 
     if (showStatistics == TRUE) {

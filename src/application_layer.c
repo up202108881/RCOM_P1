@@ -50,18 +50,31 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
                 break;
             }
 
+            printf("Packet: ");
+            for (int i = 0; i < 5; i++) {
+                printf("[0x%02X] ", controlPacket[i]);
+            }
+            printf("\n");
+
             unsigned char* data = (unsigned char*)malloc(fileSize * sizeof(unsigned char));
             fread(data, sizeof(unsigned char), fileSize, file);
 
             unsigned long long remainingBytes = fileSize;
             int errorOccurred = FALSE;
 
-            while (remainingBytes >= 0) {
+            while (remainingBytes > 0) {
                 unsigned int packetSize = remainingBytes > (MAX_PAYLOAD_SIZE - 3) ? (MAX_PAYLOAD_SIZE - 3) : remainingBytes;
                 unsigned int dataSize = packetSize;
                 unsigned char* packet = createDataPacket(data, &packetSize);
 
-                long long bytesWritten = llwrite(fd, linkLayer, packet, packetSize)
+                // print packet for debugging
+                printf("Packet: ");
+                for (int i = 0; i < 5; i++) {
+                    printf("[0x%02X] ", packet[i]);
+                }
+                printf("\n");
+
+                long long bytesWritten = llwrite(fd, linkLayer, packet, packetSize);
 
                 if (bytesWritten == -1) {
                     printf("Error occurred!\n");
@@ -69,7 +82,7 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
                     break;
                 }
 
-                printf("Bytes written: %ld\n", bytesWritten);
+                printf("Bytes written: %ld\n", dataSize);
                 printf("Bytes left: %ld\n", remainingBytes);
 
                 remainingBytes -= (long long) dataSize;
@@ -102,23 +115,40 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
                 controlPacketSize = llread(fd, linkLayer, controlPacket);
             }
 
+            printf("Packet: ");
+            for (int i = 0; i < 5; i++) {
+                printf("[0x%02X] ", controlPacket[i]);
+            }
+            printf("\n");
+
             FILE* newFile = fopen(filename, "wb");
             while (TRUE) {
                 unsigned char* dataPacket = (unsigned char*)malloc(MAX_PAYLOAD_SIZE * sizeof(unsigned char));
                 unsigned int dataPacketSize = llread(fd, linkLayer, dataPacket);
 
+                printf("Packet: ");
+                for (int i = 0; i < 5; i++) {
+                    printf("[0x%02X] ", dataPacket[i]);
+                }
+                printf("\n");
+
                 if (dataPacketSize == -1) {
-                    printf("Error occurred!\n");
+                    printf("Error occurred no read!\n");
                     break;
                 }
 
                 if (dataPacket[0] == CP_END) break;
+                printf("Data packet received: [0x%02X]\n", dataPacket[0]);
 
                 unsigned char *receivedData = (unsigned char*)malloc(MAX_PAYLOAD_SIZE * sizeof(unsigned char));
-                unsigned int dataSize = parseDataPacket(dataPacket, dataPacketSize, receivedData);
+                int dataSize = parseDataPacket(dataPacket, dataPacketSize, receivedData);
+                if (dataSize == -1) {
+                    printf("Invalid data packet.\n");
+                    break;
+                }
 
                 if (receivedData == NULL) {
-                    printf("Error occurred!\n");
+                    printf("Error occurred no data!\n");
                     break;
                 }
 
@@ -217,11 +247,8 @@ int parseControlPacket(unsigned char* packet, unsigned int packetSize, unsigned 
     return 0;
 }
 
-unsigned int parseDataPacket(unsigned char* packet, unsigned int packetSize, unsigned char* data) {
-    if (packet[0] != DP_DATA) {
-        printf("Invalid data packet.\n");
-        return NULL;
-    }
+int parseDataPacket(unsigned char* packet, unsigned int packetSize, unsigned char* data) {
+    if (packet[0] != DP_DATA) return -1;
 
     unsigned int dataSize = (packet[1] << 8) | packet[2];
 

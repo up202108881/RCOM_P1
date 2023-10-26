@@ -47,7 +47,7 @@ int llopen(LinkLayer connectionParameters)
 
     /* set input mode (non-canonical, no echo,...) */
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; /* inter-character timer unused */
+    newtio.c_cc[VTIME] = 0; 
     newtio.c_cc[VMIN] = 0;                            
 
     tcflush(fd, TCIOFLUSH);
@@ -316,7 +316,6 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
 
     while (currState != STOP) {
         if (read(fd, &byte, 1) > 0) {
-            printf("Received byte: [0x%02X]\n", byte);
             switch (currState) {
                 case START:
                     if (byte == FLAG) currState = FLAG_RCV;
@@ -325,13 +324,11 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
                     if (byte == A_TRANSMITTER) currState = A_RCV;
                     else if (byte == FLAG) currState = FLAG_RCV;
                     else currState = START;
-                    printf("INSIDE FLAG_RCV\n");
                     break;
                 case A_RCV:
                     if (byte == C_INFO_FRAME(0) || byte == C_INFO_FRAME(1)) { 
                         currState = C_RCV;
                         receivedC = byte;
-                        printf("INSIDE A_RCV\n");
                     }
                     else if (byte == FLAG) currState = FLAG_RCV;
                     else currState = START;
@@ -448,7 +445,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
         alarmEnabled = FALSE;
 
         while (connectionParameters.nRetransmissions > alarmCounter && currState != STOP) {
-            if (alarmEnabled == FALSE) { /*
+            if (alarmEnabled == FALSE) { 
                 int resW = write(fd, bufW, 5);
                 
                 if (resW != 5) {
@@ -456,10 +453,8 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
                     if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
                     close(fd);
                     return -1;
-                } */
+                } 
                 printf("Sent DISC\n");
-                printf("Sending all elements...\n");
-                int resW = write(fd, bufW, 5);
                 alarm(connectionParameters.timeout);
                 alarmEnabled = TRUE;
             }

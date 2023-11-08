@@ -50,6 +50,12 @@ typedef struct
     int timeout;
 } LinkLayer;
 
+typedef struct {
+    double open_time;
+    double data_time;
+    double debit;
+} Statistics;
+
 // SIZE of maximum acceptable payload.
 // Maximum number of bytes that application layer should send to link layer
 #define MAX_PAYLOAD_SIZE 1000
@@ -82,7 +88,7 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet);
 // Close previously opened connection.
 // if showStatistics == TRUE, link layer should print statistics in the console on close.
 // Return "1" on success or "-1" on error.
-int llclose(int fd, LinkLayer connectionParameters, int showStatistics);
+int llclose(int fd, LinkLayer connectionParameters, int showStatistics, Statistics stats);
 
 // Handles byte stuffing on the data
 // Returns the stuffed data and the size of the stuffed data

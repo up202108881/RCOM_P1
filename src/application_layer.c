@@ -16,16 +16,32 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
     if (!strcmp(role,"tx")) linkLayer.role = LLTX;
     else if (!strcmp(role, "rx")) linkLayer.role = LLRX;
     else {
-        printf("Invalid role\n");
-        exit(1);
+        printf("Invalid role.\n");
+        return;
     }
-
+    
+    system("clear");
+    printf("Establishing connection...\n");
+    
+    clock_t t;
+    
+    t = clock();
+    
     int fd = llopen(linkLayer);
+    
+    t = clock() - t;
+    
+    Statistics stats;
+    stats.open_time = ((double)t) / CLOCKS_PER_SEC;
+            
     if (fd == -1) {
         printf("Connection failed.\n");
-        exit(1);
+        return;
     }
     else printf("Connection established.\n");
+    
+    int n = 0;
+    double sum = 0, sum_debit = 0;
 
     switch (linkLayer.role) {
         case LLTX: {
@@ -33,18 +49,28 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
 
             if (file == NULL) {
                 printf("Error opening file.\n");
-                exit(1);
+                return;
             }
             
             fseek(file, 0, SEEK_END);
             unsigned int fileSize = ftell(file);
             fseek(file, 0, SEEK_SET);
-
+            
             unsigned int controlPacketSize = fileSize;
             unsigned char* controlPacket = createControlPacket(CP_START, &controlPacketSize);
 
+            printf("Sending data...\n");
+            
+            t = clock();
+            
             int check = llwrite(fd, linkLayer, controlPacket, controlPacketSize);
-
+            
+            t = clock() - t;
+            
+            n++;
+            sum += ((((double)t)) / CLOCKS_PER_SEC);
+            sum_debit += check / ((((double)t)) / CLOCKS_PER_SEC);
+                        
             if (check == -1) {
                 printf("Error occurred!\n");
                 break;
@@ -62,8 +88,16 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
                 unsigned int packetSize = remainingBytes > (MAX_PAYLOAD_SIZE - 3) ? (MAX_PAYLOAD_SIZE - 3) : remainingBytes;
                 unsigned int dataSize = packetSize;
                 unsigned char* packet = createDataPacket(data, &packetSize);
+                
+                t = clock();
+                
                 long long bytesWritten = llwrite(fd, linkLayer, packet, packetSize);
-
+            
+                t = clock() - t;
+            
+                n++;
+                sum += ((((double)t)) / CLOCKS_PER_SEC);
+                sum_debit += bytesWritten / ((((double)t)) / CLOCKS_PER_SEC);
                 
                 if (bytesWritten == -1) {
                     printf("Error occurred!\n");
@@ -71,8 +105,8 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
                     break;
                 }
 
-                printf("Bytes written: %ld\n", dataSize);
-                printf("Bytes left: %ld\n", remainingBytes);
+                printf("Bytes written: %d\n", dataSize);
+                printf("Bytes left: %lld\n", remainingBytes);
 
                 remainingBytes -= (long long) dataSize;
                 data += dataSize;
@@ -83,20 +117,40 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
             
             controlPacketSize = 0;
             unsigned char* endPacket = createControlPacket(CP_END, &controlPacketSize);
-
-            if (llwrite(fd, linkLayer, endPacket, controlPacketSize) == -1) {
+            
+            t = clock();
+            
+            check = llwrite(fd, linkLayer, endPacket, controlPacketSize);
+            
+            t = clock() - t;
+            
+            if (check == -1) {
                 printf("Error occurred!\n");
                 break;
             }
-
+         
+            n++;
+            sum += ((((double)t)) / CLOCKS_PER_SEC);
+            sum_debit += check / ((((double)t)) / CLOCKS_PER_SEC);
+             
             free(endPacket);
             fclose(file);
             break;
         }
         case LLRX: {
             unsigned char* controlPacket = (unsigned char*)malloc(MAX_PAYLOAD_SIZE * sizeof(unsigned char));
+            
+            printf("Receiving data...\n");
+            
+            t = clock();
+            
             unsigned int controlPacketSize = llread(fd, linkLayer, controlPacket);
-
+            
+            t = clock() - t;
+            
+            n++;
+            sum += ((((double)t)) / CLOCKS_PER_SEC);
+            
             unsigned long long fileSize = 0;
             while (parseControlPacket(controlPacket, controlPacketSize, &fileSize) < 0) {
                 controlPacketSize = llread(fd, linkLayer, controlPacket);
@@ -105,8 +159,16 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
             FILE* newFile = fopen(filename, "wb");
             while (TRUE) {
                 unsigned char* dataPacket = (unsigned char*)malloc(MAX_PAYLOAD_SIZE * sizeof(unsigned char));
+                
+                t = clock();
+                
                 unsigned int dataPacketSize = llread(fd, linkLayer, dataPacket);
-
+                
+                t = clock() - t;
+                
+                n++;
+                sum += ((((double)t)) / CLOCKS_PER_SEC);
+                   
                 if (dataPacketSize == -1) {
                     break;
                 }
@@ -127,14 +189,20 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
             break;
         }
         default:
-            printf("Invalid role\n");
-            exit(1);
+            printf("Invalid role.\n");
+            return;
     }
-
-    if (llclose(fd, linkLayer, FALSE) == -1) {
+    
+    printf("Disconnecting...\n");
+    
+    stats.data_time = sum / n;
+    stats.debit = sum_debit / n;
+    
+    if (llclose(fd, linkLayer, TRUE, stats) == -1) {
         printf("Error occurred while disconnecting!\n");
-        exit(1);
+        return;
     }
+    
     else printf("Connection finished.\n");
 }
 
@@ -190,7 +258,7 @@ unsigned char* createDataPacket(unsigned char* data, unsigned int* packetSize) {
     return packet;
 }
 
-int parseControlPacket(unsigned char* packet, unsigned int packetSize, unsigned int* fileSize) {
+int parseControlPacket(unsigned char* packet, unsigned int packetSize, unsigned long long* fileSize) {
     if (packet[0] != CP_START && packet[0] != CP_END) return -1;
 
     if (packet[0] == CP_START) {

@@ -15,6 +15,7 @@ void alarmHandler()
 {
     alarmEnabled = FALSE;
     alarmCounter++;
+    printf("Timeout: Alarm #%d\n", alarmCounter);
 }
 
 ////////////////////////////////////////////////
@@ -47,7 +48,7 @@ int llopen(LinkLayer connectionParameters)
 
     /* set input mode (non-canonical, no echo,...) */
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; /* inter-character timer unused */
+    newtio.c_cc[VTIME] = 0; 
     newtio.c_cc[VMIN] = 0;                            
 
     tcflush(fd, TCIOFLUSH);
@@ -81,7 +82,7 @@ int llopen(LinkLayer connectionParameters)
                     perror("write");
                     return -1;
                 }
-                printf("Sent SET\n");
+                // printf("Sent SET\n");
                 alarm(connectionParameters.timeout);
                 alarmEnabled = TRUE;
             }
@@ -109,7 +110,7 @@ int llopen(LinkLayer connectionParameters)
                         if (byte == FLAG) { 
                             currState = STOP; 
                             alarm(0);
-                            printf("Received UA\n"); 
+                            // printf("Received UA\n"); 
                             return fd; 
                         }
                         else currState = START;                    
@@ -147,7 +148,7 @@ int llopen(LinkLayer connectionParameters)
                     case BCC_OK:
                         if (byte == FLAG) { 
                             currState = STOP; 
-                            printf("Received SET\n"); 
+                            // printf("Received SET\n"); 
                         }
                         else currState = START;                    
                         break;
@@ -245,7 +246,7 @@ int llwrite(int fd, LinkLayer connectionParameters, const unsigned char *buf, in
                 perror("write");
                 return -1;
             } 
-            // int resW = write(fd, frame[0], 1);
+
             alarm(connectionParameters.timeout);
             alarmEnabled = TRUE;
         }
@@ -316,7 +317,6 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
 
     while (currState != STOP) {
         if (read(fd, &byte, 1) > 0) {
-            printf("Received byte: [0x%02X]\n", byte);
             switch (currState) {
                 case START:
                     if (byte == FLAG) currState = FLAG_RCV;
@@ -325,13 +325,11 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
                     if (byte == A_TRANSMITTER) currState = A_RCV;
                     else if (byte == FLAG) currState = FLAG_RCV;
                     else currState = START;
-                    printf("INSIDE FLAG_RCV\n");
                     break;
                 case A_RCV:
                     if (byte == C_INFO_FRAME(0) || byte == C_INFO_FRAME(1)) { 
                         currState = C_RCV;
                         receivedC = byte;
-                        printf("INSIDE A_RCV\n");
                     }
                     else if (byte == FLAG) currState = FLAG_RCV;
                     else currState = START;
@@ -424,19 +422,22 @@ int llread(int fd, LinkLayer connectionParameters, unsigned char *packet)
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
+int llclose(int fd, LinkLayer connectionParameters, int showStatistics, Statistics stats)
 {
     (void) signal(SIGALRM, alarmHandler);
-
-    if (showStatistics == TRUE) {
-        // TODO
-    }
 
     State currState = START;
     unsigned char bufW[5] = {0};
     unsigned char byte;
 
     if (connectionParameters.role == LLTX) {
+    
+        if (showStatistics == TRUE) {
+            printf("\t**Statistics**\n");
+            printf("Time taken to connect: %.3f seconds\n", stats.open_time);
+            printf("Average time taken to send a packet: %.3f seconds\n", stats.data_time);
+            printf("Average debit: %.3f bytes per second\n", stats.debit);
+        }
         
         bufW[0] = FLAG;
         bufW[1] = A_TRANSMITTER;
@@ -448,7 +449,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
         alarmEnabled = FALSE;
 
         while (connectionParameters.nRetransmissions > alarmCounter && currState != STOP) {
-            if (alarmEnabled == FALSE) { /*
+            if (alarmEnabled == FALSE) { 
                 int resW = write(fd, bufW, 5);
                 
                 if (resW != 5) {
@@ -456,10 +457,8 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
                     if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
                     close(fd);
                     return -1;
-                } */
-                printf("Sent DISC\n");
-                printf("Sending all elements...\n");
-                int resW = write(fd, bufW, 5);
+                } 
+                // printf("Sent DISC\n");
                 alarm(connectionParameters.timeout);
                 alarmEnabled = TRUE;
             }
@@ -487,7 +486,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
                         if (byte == FLAG) { 
                             currState = STOP; 
                             alarm(0);
-                            printf("Received DISC\n"); 
+                            // printf("Received DISC\n"); 
                         }
                         else currState = START;                    
                         break;
@@ -512,7 +511,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
                 return -1;
             }
 
-            printf("Sent UA\n");
+            // printf("Sent UA\n");
             if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
             close(fd);
             return 1;
@@ -529,6 +528,12 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
         return -1;
     }
     else if (connectionParameters.role == LLRX) {
+        if (showStatistics == TRUE) {
+            printf("\t**Statistics**\n");
+            printf("Time taken to connect: %.3f seconds\n", stats.open_time);
+            printf("Average time taken to receive a packet: %.3f seconds\n", stats.data_time);
+        }
+    
         while (currState != STOP) {
             if (read(fd, &byte, 1) > 0) {
                 switch (currState) {
@@ -552,7 +557,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
                     case BCC_OK:
                         if (byte == FLAG) { 
                             currState = STOP; 
-                            printf("Received DISC\n"); 
+                            // printf("Received DISC\n"); 
                         }
                         else currState = START;                    
                         break;
@@ -584,7 +589,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
                     return -1;
                 }
         
-                printf("Sent DISC\n");
+                // printf("Sent DISC\n");
                 alarm(connectionParameters.timeout);
                 alarmEnabled = TRUE;
             }
@@ -612,7 +617,7 @@ int llclose(int fd, LinkLayer connectionParameters, int showStatistics)
                         if (byte == FLAG) { 
                             currState = STOP; 
                             alarm(0);
-                            printf("Received UA\n"); 
+                            // printf("Received UA\n"); 
                             if (tcsetattr(fd, TCSANOW, &oldtio) == -1) perror("tcsetattr");
                             close(fd);
                             return 1;

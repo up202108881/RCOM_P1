@@ -23,9 +23,9 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
     system("clear");
     printf("Establishing connection...\n");
     
-    clock_t t;
+    clock_t t, total;
     
-    t = clock();
+    t = total = clock();
     
     int fd = llopen(linkLayer);
     
@@ -53,10 +53,10 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
             }
             
             fseek(file, 0, SEEK_END);
-            unsigned int fileSize = ftell(file);
+            unsigned long long fileSize = ftell(file);
             fseek(file, 0, SEEK_SET);
             
-            unsigned int controlPacketSize = fileSize;
+            unsigned long long controlPacketSize = fileSize;
             unsigned char* controlPacket = createControlPacket(CP_START, &controlPacketSize);
 
             printf("Sending data...\n");
@@ -203,13 +203,19 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
         return;
     }
     
-    else printf("Connection finished.\n");
+    total = clock() - total;
+
+    double total_time = ((double)total) / CLOCKS_PER_SEC;
+
+    printf("Total time taken: %.5f seconds\n", total_time);
+    printf("Connection finished.\n");
+
 }
 
-unsigned char* createControlPacket(unsigned char controlField, unsigned int* packetSize) {
+unsigned char* createControlPacket(unsigned char controlField, unsigned long long* packetSize) {
     switch (controlField) {
         case CP_START: {
-            unsigned int fileSize = *packetSize;
+            unsigned long long fileSize = *packetSize;
             unsigned int fileSizeBytes = 0;
 
             while (fileSize != 0) {
